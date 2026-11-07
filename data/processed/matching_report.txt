@@ -1,0 +1,15 @@
+[exposure] occupations: 756
+[oews 2016] detailed occupations: 820; employment missing/suppressed: 0; median wage missing/suppressed: 9 (top-coded '#': 5)
+[oews 2016] converted to 2018 SOC: 0 codes used directly, 757 mapped through the crosswalk, 757 total
+[oews 2019] detailed occupations: 789; employment missing/suppressed: 0; median wage missing/suppressed: 11 (top-coded '#': 7)
+[oews 2019] converted to 2018 SOC: 747 codes used directly, 0 mapped through the crosswalk, 747 total
+[oews 2022] detailed occupations: 830; employment missing/suppressed: 0; median wage missing/suppressed: 16 (top-coded '#': 11)
+[oews 2025] detailed occupations: 830; employment missing/suppressed: 0; median wage missing/suppressed: 5 (top-coded '#': 0)
+[oews] occupations present in at least one year: 849
+[oews] occupations with employment in all four years: 737
+[onet] skill ratings flagged 'Recommend Suppress' (set to NaN): 157
+[onet] SOC occupations: 798; skill columns: 35 (scale LV)
+[oews 2025] detailed occupations: 830; employment missing/suppressed: 0; median wage missing/suppressed: 5 (top-coded '#': 0)
+[join] exposure ∩ OEWS: 756 (lost 0 exposure occupations)
+[join] ... ∩ O*NET: 756 (lost 0 more)
+[final] rows: 756; with a 2022→2025 employment change: 754; with a 2016→2019 placebo change: 702
