@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Is AI Changing US Employment?
 
 Final project for CS 7830 Machine Learning (Fall 2026), Wright State University. Kamala Joshi and Diwakar Dahal.
@@ -22,3 +23,6 @@ notebooks/              analysis notebooks, numbered in order
 results/                figures and tables for the report
 reports/                final report
 ```
+=======
+# machine_learning
+>>>>>>> 438045c71691c5d381cb26500ed3d81829771472
