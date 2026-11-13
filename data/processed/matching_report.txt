@@ -9,7 +9,6 @@
 [oews] occupations with employment in all four years: 737
 [onet] skill ratings flagged 'Recommend Suppress' (set to NaN): 157
 [onet] SOC occupations: 798; skill columns: 35 (scale LV)
-[oews 2025] detailed occupations: 830; employment missing/suppressed: 0; median wage missing/suppressed: 5 (top-coded '#': 0)
 [join] exposure ∩ OEWS: 756 (lost 0 exposure occupations)
 [join] ... ∩ O*NET: 756 (lost 0 more)
 [final] rows: 756; with a 2022→2025 employment change: 754; with a 2016→2019 placebo change: 702
