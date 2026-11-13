@@ -1,5 +1,5 @@
 """
-dwfw
+
 """
 
 import pandas as pd
@@ -52,7 +52,7 @@ def to_number(series):
 
 
 
-def load_oews_year(year):
+def load_oews_year(year, cw):
     # Build the file name: str(2016)[2:] is "16" -> "oesm16nat.zip"
     zpath = RAW / f"oesm{str(year)[2:]}nat.zip"
 
@@ -89,7 +89,7 @@ def load_oews_year(year):
 
     # 2016 uses 2010 codes and 2019 a mix; translate them so they match the 2018 codes
     if year < 2021:
-        out = convert_to_soc2018(out, year)
+        out = convert_to_soc2018(out, year, cw)
     return out
 
 
@@ -101,9 +101,7 @@ def load_crosswalk():
 
 
 
-def convert_to_soc2018(df, year):
-    cw = load_crosswalk()
-
+def convert_to_soc2018(df, year, cw):
     split_10 = set(cw.groupby("c10")["c18"].nunique().loc[lambda s: s > 1].index)
 
     # Dictionaries for quick lookup: code -> value
@@ -138,12 +136,12 @@ def convert_to_soc2018(df, year):
 
 
 
-def load_oews():
+def load_oews(cw):
     # load all four BLS year and place them side by side
-    merged = None;
+    merged = None
 
     for year in OEWS_YEARS:
-        part = load_oews_year(year)
+        part = load_oews_year(year, cw)
         # keep an occupation even if it is missing in some years (those cells become NaN)
         merged = part if merged is None else merged.merge(part, on="soc_code", how="outer")
     log(f"[oews] occupations present in at least one year: {len(merged)}")
@@ -213,7 +211,8 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
 
     exposure = load_exposure()
-    oews = load_oews()
+    cw = load_crosswalk()
+    oews = load_oews(cw)
     onet = load_onet()
 
     step1 = exposure.merge(oews, on="soc_code", how="inner")
@@ -239,25 +238,6 @@ def main():
     full.to_csv(OUT / "occupations.csv", index=False)       # index=False: no extra row-number column
     (OUT / "matching_report.txt").write_text("\n".join(report_lines) + "\n")
     print(f"\nSaved {OUT/'occupations.csv'} and {OUT/'matching_report.txt'}")
-
-
-    
-
-
-
-#     print(exp.head())
-#     print(exp.shape)
-#     print(exp.dtypes)
-#     print(exp.duplicated().sum())
-#     print(exp["occ_code"].str.match(r"^\d{2}-\d{4}$"))
-#     print(exp["occ_code"].str.match(r"^\d{2}-\d{4}$").all())
-#     print(exp["occ_code"].min())
-#     print(exp["occ_code"].max())
-
-
-# print(exp["observed_exposure"].min(), exp["observed_exposure"].max())
-# print((exp["observed_exposure"] == 0).mean())
-
 
 if __name__ == "__main__":
     main()
