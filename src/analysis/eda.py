@@ -1,350 +1,3 @@
-# """
-# 01_eda.py - Exploratory Data Analysis
-# Project: Is AI Changing US Employment? (CS 7830, Kamala Joshi & Diwakar Dahal)
-# Run: python src/analysis/eda.py   |   Figures: results/figures/01_*.png
-# """
-
-# # %% Setup
-# import os
-# from pathlib import Path
-# import numpy as np
-# import pandas as pd
-# import matplotlib.pyplot as plt
-
-# ROOT = next(p for p in Path(__file__).resolve().parents if (p / "data").is_dir())  # project folder
-# FIG = ROOT / "results" / "figures"
-# os.makedirs(FIG, exist_ok=True)
-
-# pd.set_option("display.max_columns", 60)
-# pd.set_option("display.width", 140)
-# plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.3})
-
-
-# def save(name):
-#     plt.savefig(FIG / f"01_{name}.png", dpi=200, bbox_inches="tight")
-
-
-# def standardize(X):
-#     X = np.asarray(X, dtype=float)
-#     return (X - X.mean(axis=0)) / X.std(axis=0)
-
-
-# def pca_numpy(Xs):
-#     U, S, Vt = np.linalg.svd(Xs, full_matrices=False)
-#     ratio = S**2 / (S**2).sum()
-#     return ratio, Vt, Xs @ Vt.T
-
-
-# def heatmap(ax, corr, labels=None, annot=False):
-#     labels = list(corr.columns) if labels is None else labels
-#     im = ax.imshow(corr.values, cmap="RdBu_r", vmin=-1, vmax=1)
-#     ax.set_xticks(range(len(labels)), labels, rotation=90)
-#     ax.set_yticks(range(len(labels)), labels)
-#     ax.grid(False)
-#     if annot:
-#         for i in range(corr.shape[0]):
-#             for j in range(corr.shape[1]):
-#                 ax.text(j, i, f"{corr.values[i, j]:.2f}", ha="center", va="center", fontsize=8)
-#     plt.colorbar(im, ax=ax, shrink=0.7)
-
-
-# def weighted_group_table(data, col, wcol):
-#     d = data.dropna(subset=[col, wcol])
-#     return d.groupby("exposure_group", observed=True).apply(
-#         lambda g: pd.Series({"n": len(g), "mean": g[col].mean(),
-#                              "weighted_mean": np.average(g[col], weights=g[wcol])}),
-#         include_groups=False).round(3)
-
-
-# # %% Load and prepare
-# df = pd.read_csv(ROOT / "data" / "processed" / "occupations.csv", dtype={"soc_code": str})
-# skill_cols = [c for c in df.columns if c.startswith("skill_")]
-
-# FAMILY = {"11": "Management", "13": "Business & financial", "15": "Computer & math",
-#           "17": "Architecture & eng.", "19": "Science", "21": "Community & social", "23": "Legal",
-#           "25": "Education", "27": "Arts & media", "29": "Healthcare practitioners",
-#           "31": "Healthcare support", "33": "Protective service", "35": "Food prep & serving",
-#           "37": "Building & grounds", "39": "Personal care", "41": "Sales", "43": "Office & admin",
-#           "45": "Farming", "47": "Construction", "49": "Installation & repair", "51": "Production",
-#           "53": "Transportation"}
-# df["family_name"] = df["soc_code"].str[:2].map(FAMILY)
-
-# # BLS top-codes high wages (2022 cap $239,200; 2016 cap $208,000)
-# CAP_2022, CAP_2016 = 239_200, 208_000
-# df["wage_2022_topcoded"] = df["wage_2022"].isna() & (df["wage_2025"] >= CAP_2022)
-# df.loc[df["wage_2022_topcoded"], "wage_2022"] = CAP_2022
-# df["wage_2016_topcoded"] = df["wage_2016"].isna() & df["emp_2016"].notna() & (df["wage_2025"] >= CAP_2022)
-# df.loc[df["wage_2016_topcoded"], "wage_2016"] = CAP_2016
-
-# df["log_wage_2022"] = np.log(df["wage_2022"])
-# df["job_zone_round"] = df["job_zone"].round().astype(int)
-# df["all_other"] = df["title"].str.contains("All Other")
-# df["extreme_change"] = df["d_log_emp_2022_2025"].abs() > 0.7
-# df["exposure_group"] = pd.cut(df["exposure"], bins=[-0.001, 0, 0.1, 0.3, 1],
-#                               labels=["0", "0–0.1", "0.1–0.3", ">0.3"])
-
-# print(df.shape)
-# print("Top-coded wages filled  2022:", df["wage_2022_topcoded"].sum(), " 2016:", df["wage_2016_topcoded"].sum())
-# print("'All Other' rows:", df["all_other"].sum(), " extreme swings:", df["extreme_change"].sum(),
-#       " non-whole job zones:", (df["job_zone"] % 1 != 0).sum())
-
-# key = ["exposure", "emp_2022", "emp_2025", "wage_2022", "wage_2025", "job_zone", "education_level",
-#        "d_log_emp_2022_2025", "d_log_emp_2016_2019", "d_log_wage_2022_2025"]
-# print(df[key].describe().T.round(3))
-
-# # %% A. Exposure
-# nz = df.loc[df["exposure"] > 0, "exposure"]
-# fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-# axes[0].hist(df["exposure"], bins=40, color="#4C72B0")
-# axes[0].set(title="Exposure, all occupations", xlabel="exposure", ylabel="occupations")
-# axes[1].hist(nz, bins=40, color="#DD8452")
-# axes[1].set(title="Exposure > 0 only", xlabel="exposure")
-# plt.tight_layout(); save("exposure_hist"); plt.show()
-
-# print(f"Share exactly 0: {(df['exposure'] == 0).mean():.3f} | non-zero: {len(nz)} | skew (non-zero): {nz.skew():.2f}")
-# print(nz.describe().round(3))
-
-# fam_exp = (df.groupby("family_name")["exposure"]
-#            .agg(mean="mean", share_nonzero=lambda s: (s > 0).mean(), n="count").sort_values("mean"))
-# fig, ax = plt.subplots(figsize=(8, 7))
-# ax.barh(fam_exp.index, fam_exp["mean"], color="#4C72B0")
-# ax.set(title="Average exposure by job family", xlabel="mean exposure")
-# plt.tight_layout(); save("exposure_by_family"); plt.show()
-# print(fam_exp.sort_values("mean", ascending=False).round(3))
-
-# cols = ["soc_code", "title", "family_name", "exposure", "emp_2022"]
-# print("Highest exposure:"); print(df.nlargest(15, "exposure")[cols])
-# print("Lowest non-zero exposure:"); print(df[df["exposure"] > 0].nsmallest(15, "exposure")[cols])
-
-# # %% B. Employment and wages
-# fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-# axes[0, 0].hist(df["emp_2022"].dropna(), bins=50, color="#4C72B0")
-# axes[0, 0].set(title="Employment 2022", xlabel="workers")
-# axes[0, 1].hist(np.log10(df["emp_2022"].dropna()), bins=50, color="#4C72B0")
-# axes[0, 1].set(title="Employment 2022 (log10)", xlabel="log10(workers)")
-# axes[1, 0].hist(df["wage_2022"].dropna(), bins=50, color="#55A868")
-# axes[1, 0].set(title="Median wage 2022", xlabel="$ per year")
-# axes[1, 1].hist(df["log_wage_2022"].dropna(), bins=50, color="#55A868")
-# axes[1, 1].set(title="Median wage 2022 (log)", xlabel="log(wage)")
-# plt.tight_layout(); save("emp_wage_hist"); plt.show()
-
-# print("Skew emp_2022:", round(df["emp_2022"].skew(), 2), "| log:", round(np.log(df["emp_2022"]).skew(), 2))
-# print("Skew wage_2022:", round(df["wage_2022"].skew(), 2), "| log:", round(df["log_wage_2022"].skew(), 2))
-# print(f"Total workers 2022: {df['emp_2022'].sum():,.0f} | 2025: {df['emp_2025'].sum():,.0f}")
-
-# outcomes = {"d_log_emp_2022_2025": "Employment change 2022→2025",
-#             "d_log_emp_2016_2019": "Employment change 2016→2019 (placebo)",
-#             "d_log_wage_2022_2025": "Wage change 2022→2025"}
-# fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-# for ax, (col, title) in zip(axes, outcomes.items()):
-#     ax.hist(df[col].dropna(), bins=50, color="#8172B2")
-#     ax.axvline(0, color="k", lw=1)
-#     ax.set(title=title, xlabel="log change")
-# plt.tight_layout(); save("outcome_hist"); plt.show()
-
-# for col in outcomes:
-#     s = df[col].dropna()
-#     print(f"{col}: n={len(s)} mean={s.mean():.3f} median={s.median():.3f} sd={s.std():.3f} share>0={(s > 0).mean():.3f}")
-
-# ext = ["title", "family_name", "emp_2022", "emp_2025", "exposure", "d_log_emp_2022_2025"]
-# print("Biggest increases:"); print(df.nlargest(10, "d_log_emp_2022_2025")[ext])
-# print("Biggest decreases:"); print(df.nsmallest(10, "d_log_emp_2022_2025")[ext])
-
-# d = df.dropna(subset=["d_log_emp_2022_2025", "emp_2022"]).copy()
-# d["size_group"] = pd.qcut(d["emp_2022"], 4, labels=["smallest 25%", "2nd", "3rd", "largest 25%"])
-# print(d.groupby("size_group", observed=True)["d_log_emp_2022_2025"]
-#       .agg(count="count", sd="std", mean_abs_change=lambda s: s.abs().mean()).round(3))
-
-# # %% Exposure vs employment change
-# fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-# for ax, col, emp, title in zip(axes, ["d_log_emp_2022_2025", "d_log_emp_2016_2019"],
-#                                ["emp_2022", "emp_2016"], ["2022→2025 (after ChatGPT)", "2016→2019 (placebo)"]):
-#     d = df.dropna(subset=[col, emp])
-#     ax.scatter(d["exposure"], d[col], s=d[emp] / d[emp].max() * 400 + 3, alpha=0.4, color="#4C72B0", edgecolor="none")
-#     ax.axhline(0, color="k", lw=1)
-#     ax.set(title=title, xlabel="exposure", ylabel="log change in employment")
-# plt.tight_layout(); save("exposure_vs_change"); plt.show()
-
-# # Compare both periods on the same occupations
-# same = df.dropna(subset=["d_log_emp_2016_2019", "d_log_emp_2022_2025", "emp_2016", "emp_2022"])
-# print(f"Same-sample occupations: {len(same)}")
-# print("2022→2025 (same occupations):"); print(weighted_group_table(same, "d_log_emp_2022_2025", "emp_2022"))
-# print("2016→2019 (same occupations):"); print(weighted_group_table(same, "d_log_emp_2016_2019", "emp_2016"))
-# print("2022→2025 (all occupations):");  print(weighted_group_table(df, "d_log_emp_2022_2025", "emp_2022"))
-
-# nopl = df[df["d_log_emp_2016_2019"].isna()].dropna(subset=["d_log_emp_2022_2025"])
-# print(f"No placebo data: n={len(nopl)} mean change={nopl['d_log_emp_2022_2025'].mean():.3f} "
-#       f"mean exposure={nopl['exposure'].mean():.3f} (all: {df['exposure'].mean():.3f})")
-
-# print("Share of 2022 workers by exposure group:")
-# print((df.groupby("exposure_group", observed=True)["emp_2022"].sum() / df["emp_2022"].sum()).round(3))
-# print(df[df["exposure_group"] == ">0.3"].nlargest(5, "emp_2022")[["title", "exposure", "emp_2022"]])
-
-# # %% Change by job family
-# order = df.groupby("family_name")["d_log_emp_2022_2025"].median().sort_values().index
-# groups = [df.loc[df["family_name"] == f, "d_log_emp_2022_2025"].dropna() for f in order]
-# fig, ax = plt.subplots(figsize=(9, 8))
-# ax.boxplot(groups, orientation="horizontal", tick_labels=list(order), patch_artist=True,
-#            boxprops=dict(facecolor="#C4D7EA"), flierprops=dict(markersize=2))
-# ax.axvline(0, color="k", lw=1)
-# ax.set(title="Employment change 2022→2025 by job family", xlabel="log change")
-# plt.tight_layout(); save("change_by_family"); plt.show()
-
-# d = df.dropna(subset=["d_log_emp_2022_2025"])
-# print(d.groupby("family_name").apply(
-#     lambda g: pd.Series({"n": len(g), "mean_exposure": g["exposure"].mean(),
-#                          "weighted_change": np.average(g["d_log_emp_2022_2025"], weights=g["emp_2022"])}),
-#     include_groups=False).sort_values("weighted_change").round(3))
-
-# d = df.dropna(subset=["d_log_wage_2022_2025"])
-# fig, ax = plt.subplots(figsize=(8, 5))
-# ax.scatter(d["exposure"], d["d_log_wage_2022_2025"], s=8, alpha=0.5, color="#55A868")
-# ax.set(title="Exposure vs wage change 2022→2025", xlabel="exposure", ylabel="log change in median wage")
-# plt.tight_layout(); save("exposure_vs_wage_change"); plt.show()
-# print("Corr exposure vs wage change:", round(d["exposure"].corr(d["d_log_wage_2022_2025"]), 3))
-
-# # %% C. Education, job zone and correlations
-# fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-# axes[0].hist(df["job_zone"], bins=np.arange(1.75, 5.5, 0.25), color="#C44E52")
-# axes[0].set(title="Job zone", xlabel="job zone (2 = little prep, 5 = extensive)")
-# axes[1].hist(df["education_level"].dropna(), bins=30, color="#C44E52")
-# axes[1].set(title="Required education", xlabel="education level (2 = HS, 6 = bachelor's, 8 = master's, 11 = doctoral)")
-# plt.tight_layout(); save("jobzone_education_hist"); plt.show()
-# print(df["job_zone_round"].value_counts().sort_index())
-
-# main_vars = ["exposure", "log_wage_2022", "job_zone", "education_level", "skill_programming", "skill_writing",
-#              "skill_mathematics", "skill_repairing", "skill_social_perceptiveness", "d_log_emp_2022_2025"]
-# corr_rows = df[main_vars].dropna()
-# fig, ax = plt.subplots(figsize=(9, 7))
-# heatmap(ax, corr_rows.corr(), annot=True)
-# ax.set_title(f"Correlations: predictors and outcome (n = {len(corr_rows)})")
-# plt.tight_layout(); save("corr_main"); plt.show()
-
-# X = df[["exposure", "log_wage_2022", "education_level", "job_zone"]].dropna()
-# vif = {}
-# for col in X.columns:
-#     y = X[col].values
-#     others = np.column_stack([np.ones(len(X)), X.drop(columns=col).values])
-#     coef, *_ = np.linalg.lstsq(others, y, rcond=None)
-#     r2 = 1 - ((y - others @ coef) ** 2).sum() / ((y - y.mean()) ** 2).sum()
-#     vif[col] = 1 / (1 - r2)
-# print(pd.Series(vif, name="VIF").round(2))
-
-# # %% Skills and PCA
-# skills = df[skill_cols].dropna()
-# short = [c.replace("skill_", "").replace("_", " ") for c in skill_cols]
-# skill_corr = skills.corr()
-
-# fig, ax = plt.subplots(figsize=(13, 11))
-# heatmap(ax, skill_corr, labels=short)
-# ax.set_title("Correlations among the 35 O*NET skills")
-# plt.tight_layout(); save("corr_skills"); plt.show()
-
-# upper = skill_corr.where(np.triu(np.ones(skill_corr.shape, dtype=bool), k=1)).stack()
-# print(f"Mean |r| between skills: {upper.abs().mean():.2f} | pairs |r|>0.8: {(upper.abs() > 0.8).sum()} of {len(upper)}")
-# print(upper.abs().sort_values(ascending=False).head(10).round(3))
-
-# ratio, components, pc_scores = pca_numpy(standardize(skills))
-# cum = ratio.cumsum()
-# k = np.arange(1, 16)
-# fig, ax = plt.subplots(figsize=(8, 4))
-# ax.bar(k, ratio[:15], color="#4C72B0", label="per component")
-# ax.plot(k, cum[:15], "o-", color="#C44E52", label="cumulative")
-# ax.axhline(0.8, ls="--", color="grey"); ax.axhline(0.9, ls="--", color="grey")
-# ax.set(title="PCA on skills: explained variance", xlabel="component", ylabel="share of variance", xticks=k)
-# ax.legend()
-# plt.tight_layout(); save("pca_scree"); plt.show()
-# print(pd.DataFrame({"component": k, "variance": ratio[:15], "cumulative": cum[:15]}).round(3).to_string(index=False))
-# print("Components for 80%:", int(np.argmax(cum >= 0.8) + 1), "| for 90%:", int(np.argmax(cum >= 0.9) + 1))
-
-# loadings = pd.DataFrame(components[:3].T, index=short, columns=["PC1", "PC2", "PC3"])
-# for pc in loadings:
-#     s = loadings[pc].sort_values()
-#     print(f"{pc} negative:", ", ".join(f"{i} ({v:.2f})" for i, v in s.head(5).items()))
-#     print(f"{pc} positive:", ", ".join(f"{i} ({v:.2f})" for i, v in s.tail(5)[::-1].items()))
-
-# fig, ax = plt.subplots(figsize=(7, 10))
-# loadings[["PC1", "PC2"]].sort_values("PC2").plot.barh(ax=ax)
-# ax.set(title="Skill loadings on PC1 and PC2", xlabel="loading")
-# plt.tight_layout(); save("pca_loadings"); plt.show()
-
-# pcs = pd.DataFrame(pc_scores[:, :4], index=skills.index, columns=["PC1", "PC2", "PC3", "PC4"])
-# plot_df = df.join(pcs, how="inner")
-# fig, ax = plt.subplots(figsize=(9, 7))
-# sc = ax.scatter(plot_df["PC1"], plot_df["PC2"], c=plot_df["exposure"], cmap="viridis", s=14, alpha=0.8)
-# plt.colorbar(sc, label="exposure")
-# for _, r in plot_df.nlargest(6, "exposure").iterrows():
-#     ax.annotate(r["title"][:28], (r["PC1"], r["PC2"]), fontsize=7)
-# ax.set(title="Occupations on the first two skill components", xlabel="PC1", ylabel="PC2")
-# plt.tight_layout(); save("pca_scatter_exposure"); plt.show()
-
-# print("Skill components vs controls:")
-# print(pd.DataFrame({c: pcs.corrwith(plot_df[c]) for c in
-#                     ["job_zone", "education_level", "log_wage_2022", "exposure"]}).round(2))
-
-# # %% D. Missing values
-# miss = df[key + skill_cols + ["wage_2016", "wage_2019", "emp_2016", "emp_2019"]].isna().sum()
-# miss = miss[miss > 0].sort_values(ascending=False)
-# fig, ax = plt.subplots(figsize=(8, 9))
-# ax.barh(miss.index, miss.values, color="#937860")
-# ax.set(title="Missing values per column (out of 756)", xlabel="missing")
-# plt.tight_layout(); save("missing_counts"); plt.show()
-# print(miss.to_frame("missing"))
-
-# df["edu_missing"] = df["education_level"].isna()
-# print(df.groupby("family_name")["edu_missing"].agg(missing="sum", n="count", share="mean")
-#       .sort_values("share", ascending=False).round(3))
-# print(df.groupby("edu_missing")[["exposure", "wage_2022", "emp_2022", "job_zone", "d_log_emp_2022_2025"]].median().round(3))
-
-# df["placebo_missing"] = df["d_log_emp_2016_2019"].isna()
-# print(df.groupby("exposure_group", observed=True)["placebo_missing"].agg(n="count", share_missing="mean").round(3))
-# print(df[df["placebo_missing"]].nlargest(12, "exposure")[["title", "exposure", "emp_2022"]])
-
-# sets = {
-#     "regression with education": ["d_log_emp_2022_2025", "exposure", "wage_2022", "education_level", "job_zone"],
-#     "regression without education": ["d_log_emp_2022_2025", "exposure", "wage_2022", "job_zone"],
-#     "clustering (+35 skills)": ["exposure", "wage_2022", "education_level", "job_zone"] + skill_cols,
-#     "placebo with education": ["d_log_emp_2016_2019", "exposure", "wage_2016", "education_level", "job_zone"],
-#     "placebo without education": ["d_log_emp_2016_2019", "exposure", "wage_2016", "job_zone"],
-# }
-# print(pd.Series({k: len(df.dropna(subset=v)) for k, v in sets.items()}, name="rows kept (of 756)"))
-
-# # %% E. Scaling
-# feat = ["exposure", "wage_2022", "education_level", "job_zone", "skill_programming", "skill_writing"]
-# d = df[feat].dropna()
-# print(d.agg(["min", "max", "std"]).T.round(2))
-
-# rng = np.random.default_rng(42)
-# i, j = rng.integers(0, len(d), 2000), rng.integers(0, len(d), 2000)
-
-
-# def distance_share(X):
-#     sq = (X.values[i] - X.values[j]) ** 2
-#     return pd.Series(sq.sum(axis=0) / sq.sum(), index=X.columns)
-
-
-# dist = pd.DataFrame({"unscaled": distance_share(d),
-#                      "standardized": distance_share(pd.DataFrame(standardize(d), columns=feat))}).round(4)
-# fig, ax = plt.subplots(figsize=(8, 4))
-# dist.plot.bar(ax=ax, rot=20)
-# ax.set(title="Share of pairwise distance from each feature", ylabel="share")
-# plt.tight_layout(); save("scaling_distance_share"); plt.show()
-# print(dist)
-
-# w = df["wage_2022"].dropna()
-# fig, axes = plt.subplots(1, 3, figsize=(14, 3.5))
-# axes[0].hist(w, bins=40); axes[0].set_title("wage")
-# axes[1].hist(standardize(w.to_frame()).ravel(), bins=40); axes[1].set_title("standardized wage")
-# axes[2].hist(standardize(np.log(w).to_frame()).ravel(), bins=40); axes[2].set_title("standardized log(wage)")
-# plt.tight_layout(); save("wage_transform"); plt.show()
-
-"""
-eda.py - Exploratory Data Analysis
-Project: Is AI Changing US Employment? (CS 7830, Kamala Joshi & Diwakar Dahal)
-Run: python src/analysis/eda.py
-Output: results/figures/01_*.png  (each chart also opens in a window: use the toolbar to zoom and pan)
-Requires: pandas, numpy, matplotlib
-"""
 
 from pathlib import Path
 import textwrap
@@ -357,12 +10,12 @@ ROOT = next(p for p in Path(__file__).resolve().parents if (p / "data").is_dir()
 FIG = ROOT / "results" / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
 pd.set_option("display.width", 140)
-SHOW = True   # set to False to only save the PNGs without opening windows
+SHOW = False   
 
-# %% Style
+#  Style
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 INK, INK2, GRID, SURFACE = "#0b0b0b", "#52514e", "#e6e5e1", "#fcfcfb"
-BEFORE, AFTER = BLUE, ORANGE          # 2016-19 is always blue, 2022-25 always orange
+BEFORE, AFTER = BLUE, ORANGE         
 DIVERGING = LinearSegmentedColormap.from_list("div", ["#104281", "#6da7ec", "#f0efec", "#ee8a89", "#b42d2c"])
 SEQUENTIAL = LinearSegmentedColormap.from_list("seq", ["#cde2fb", "#3987e5", "#0d366b"])
 
@@ -425,7 +78,7 @@ def wmean(g, col, w):
     return np.average(g[col], weights=g[w])
 
 
-# %% Load and prepare
+# Load and prepare
 df = pd.read_csv(ROOT / "data" / "processed" / "occupations.csv", dtype={"soc_code": str})
 skill_cols = [c for c in df.columns if c.startswith("skill_")]
 short = {c: c.replace("skill_", "").replace("_", " ") for c in skill_cols}
@@ -452,7 +105,7 @@ df["all_other"] = df["title"].str.contains("All Other")
 df["extreme_change"] = df["d_log_emp_2022_2025"].abs() > 0.7
 GROUPS = ["0", "0–0.1", "0.1–0.3", ">0.3"]
 df["exposure_group"] = pd.cut(df["exposure"], bins=[-0.001, 0, 0.1, 0.3, 1], labels=GROUPS)
-df["chg_main"] = 100 * df["d_log_emp_2022_2025"]   # log points x100, roughly %
+df["chg_main"] = 100 * df["d_log_emp_2022_2025"]   # log points x100, roughly 
 df["chg_pre"] = 100 * df["d_log_emp_2016_2019"]
 
 n = len(df)
@@ -460,7 +113,7 @@ print(df.shape)
 print("Top-coded wages filled  2022:", df["wage_2022_topcoded"].sum(), " 2016:", df["wage_2016_topcoded"].sum())
 print("'All Other' rows:", df["all_other"].sum(), " extreme swings:", df["extreme_change"].sum())
 
-# %% A. Exposure
+# A. Exposure
 nz = df[df["exposure"] > 0]
 n_zero = n - len(nz)
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4.2), gridspec_kw={"width_ratios": [1, 2.3]})
@@ -500,7 +153,7 @@ ax.grid(axis="y", visible=False)
 finish(fig, "exposure_top", "The most exposed jobs are text-, code- and information-heavy",
        "The 15 occupations with the highest exposure score.")
 
-# %% B. Employment, wages and outcomes
+# B. Employment, wages and outcomes
 fig, axes = plt.subplots(2, 2, figsize=(11, 7))
 panels = [(df["emp_2022"], "Employment 2022", "workers", BLUE), (np.log10(df["emp_2022"]), "Employment 2022 (log10)", "log10(workers)", BLUE),
           (df["wage_2022"], "Median wage 2022", "$ per year", AQUA), (df["log_wage_2022"], "Median wage 2022 (log)", "log(wage)", AQUA)]
@@ -548,7 +201,7 @@ finish(fig, "biggest_changes", "The biggest gainers and losers are mostly small 
        "Ten largest increases and decreases; 2022 workers in brackets. Most are tiny occupations or job-code changes "
        "(e.g. taxi drivers) rather than AI effects.")
 
-# %% C. Exposure vs employment change (research question)
+# C. Exposure vs employment change (research question)
 fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 for ax, (col, emp, c, t) in zip(axes, [("chg_pre", "emp_2016", BEFORE, "2016→2019 (before ChatGPT)"),
                                        ("chg_main", "emp_2022", AFTER, "2022→2025 (after ChatGPT)")]):
@@ -602,7 +255,7 @@ finish(fig, "workers_by_group",
        "Share of all workers in each exposure group, with the three largest occupations of each group listed below its bar. "
        "A few very large occupations drive the worker-weighted results.")
 
-# %% D. Change by job family
+# D. Change by job family
 order = df.groupby("family")["chg_main"].median().sort_values(ascending=False).index
 fig, ax = plt.subplots(figsize=(11, 8))
 data = [df.loc[df["family"] == f, "chg_main"].dropna() for f in order]
@@ -646,7 +299,7 @@ finish(fig, "exposure_vs_wage_change",
        f"More exposed jobs saw slightly smaller raises (r = {d['exposure'].corr(d['d_log_wage_2022_2025']):.2f})",
        "Wage growth for each occupation against exposure. The line is a simple linear trend.")
 
-# %% E. Education, job zone and correlations
+# E. Education, job zone and correlations
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4.5), gridspec_kw={"width_ratios": [1, 1.5]})
 jz = df["job_zone_round"].value_counts().sort_index()
 label_bars(a1, a1.bar(jz.index.astype(str), jz.values, color=BLUE, width=0.6), "{:.0f}")
@@ -691,7 +344,7 @@ ax.grid(axis="y", visible=False)
 finish(fig, "vif", "Education and job zone overlap too much to use together; exposure does not overlap with the controls",
        "VIF shows how well each variable is predicted by the others. Above 5 (orange) is a warning sign.")
 
-# %% F. Skills and PCA
+# F. Skills and PCA
 skills = df[skill_cols].dropna()
 skill_corr = skills.corr().rename(index=short, columns=short)
 upper = skill_corr.where(np.triu(np.ones(skill_corr.shape, dtype=bool), k=1)).stack()
@@ -761,7 +414,7 @@ finish(fig, "pca_vs_controls",
        f"PC1 overlaps job zone (r = {pc_ctrl.loc['PC1', 'job zone']:.2f}), so don't use both in one regression",
        "Correlation of each skill component with the controls. PC2–PC4 add information the controls don't have.")
 
-# %% G. Missing values
+# G. Missing values
 miss_cols = ["education_level", "wage_2016", "wage_2019", "emp_2016", "emp_2019", "d_log_emp_2016_2019",
              "d_log_wage_2022_2025", "wage_2022", "wage_2025", "d_log_emp_2022_2025"]
 miss = df[miss_cols].isna().sum()
@@ -805,7 +458,7 @@ ax.grid(axis="y", visible=False)
 finish(fig, "rows_kept", "Dropping education keeps over 100 more occupations",
        "How many occupations each planned feature set keeps if rows with blanks are dropped.")
 
-# %% H. Scaling
+# H. Scaling
 feat = ["exposure", "wage_2022", "education_level", "job_zone", "skill_programming", "skill_writing"]
 d = df[feat].dropna()
 i, j = rng.integers(0, len(d), 2000), rng.integers(0, len(d), 2000)
