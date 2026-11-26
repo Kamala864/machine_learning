@@ -6,18 +6,11 @@ import statsmodels.formula.api as smf
 import statsmodels.api as sm
 from statsmodels.stats.diagnostic import het_breuschpagan
 import matplotlib.pyplot as plt
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import RidgeCV, LassoCV
-from sklearn.ensemble import HistGradientBoostingRegressor
-from sklearn.model_selection import KFold, GridSearchCV, cross_validate
-from sklearn.inspection import permutation_importance
-from sklearn.dummy import DummyRegressor
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))  
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / "data").is_dir())   
+sys.path.append(str(ROOT / "src"))                                                     
 from features import build_features, REG_BASE, REG_FULL, PLACEBO_BASE
 
-ROOT = Path(__file__).resolve().parents[2]
 TAB, FIG = ROOT / "results" / "tables", ROOT / "results" / "figures"
 TAB.mkdir(parents=True, exist_ok=True)
 FIG.mkdir(parents=True, exist_ok=True)
@@ -72,7 +65,6 @@ def run_specs(specs):
     return pd.DataFrame(rows)
 
 
-
 main = run_specs([("Employment 2022-25, base controls", "y_main", REG_BASE, "emp_2022"),
                   ("Employment 2022-25, full controls", "y_main", REG_FULL, "emp_2022"),
                   ("Placebo 2016-19, base controls", "y_pre", PLACEBO_BASE, "emp_2016")])
@@ -80,14 +72,12 @@ print("\n=== 1. Employment: exposure effect (per +0.1 exposure, log points x100 
 print(main.round(3).to_string(index=False))
 main.to_csv(TAB / "regression_main.csv", index=False)
 
-
 wage = run_specs([("Wages 2022-25, base controls", "y_wage", REG_BASE, "emp_2022"),
                   ("Wages 2022-25, full controls", "y_wage", REG_FULL, "emp_2022"),
                   ("Wage placebo 2016-19, base controls", "y_wage_pre", PLACEBO_BASE, "emp_2016")])
 print("\n=== 2. Wages: exposure effect on median wage change (per +0.1 exposure, log points x100) ===")
 print(wage.round(3).to_string(index=False))
 wage.to_csv(TAB / "regression_wage.csv", index=False)
-
 
 rows = []
 for outcome, y in [("Employment", "y_main"), ("Wages", "y_wage")]:
@@ -127,7 +117,6 @@ print(f"\n=== 4. Change in the exposure effect after ChatGPT ({len(both)} occupa
 print("effect = (effect after) - (effect before); effect_before = slope in 2016-19")
 print(change.round(3).to_string(index=False))
 change.to_csv(TAB / "regression_change.csv", index=False)
-
 
 base = df.dropna(subset=["y_main", "emp_2022"] + REG_BASE)
 pre = base.dropna(subset=["y_pre"])                                  
@@ -175,50 +164,7 @@ pd.DataFrame({"breusch_pagan_p": [bp_p], "influential_jobs": [(cooks > cutoff).s
               "p_without_influential": [no_infl.pvalues["exp10"]]}).to_csv(TAB / "regression_diagnostics.csv", index=False)
 vif.to_csv(TAB / "regression_vif.csv")
 
-
-ml = df.dropna(subset=["y_main"] + REG_FULL)
-X, y = ml[REG_FULL], ml["y_main"].clip(-70, 70)   
-cv = KFold(5, shuffle=True, random_state=42)
-gbm_grid = GridSearchCV(
-    HistGradientBoostingRegressor(min_samples_leaf=20, random_state=42),
-    {"max_depth": [2, 3, 4], "learning_rate": [0.02, 0.05, 0.1], "max_iter": [100, 300]},
-    cv=KFold(3, shuffle=True, random_state=1), scoring="r2")
-models = {
-    "Baseline (predict the average)": DummyRegressor(),
-    "Linear regression": make_pipeline(StandardScaler(), RidgeCV(alphas=[1e-6])),
-    "Ridge": make_pipeline(StandardScaler(), RidgeCV(alphas=np.logspace(-2, 3, 30))),
-    "Lasso": make_pipeline(StandardScaler(), LassoCV(cv=5, random_state=42)),
-    "Gradient boosting (tuned)": gbm_grid,
-}
-rows = []
-for name, model in models.items():
-    s = cross_validate(model, X, y, cv=cv, scoring=["r2", "neg_root_mean_squared_error", "neg_mean_absolute_error"])
-    rows.append({"model": name, "r2": s["test_r2"].mean(), "r2_sd": s["test_r2"].std(),
-                 "rmse": -s["test_neg_root_mean_squared_error"].mean(), "mae": -s["test_neg_mean_absolute_error"].mean()})
-scores = pd.DataFrame(rows)
-print(f"\n=== 7. Prediction (5-fold CV, {len(ml)} occupations; RMSE and MAE in log points x100) ===")
-print("gradient boosting settings are tuned inside each training fold (nested cross-validation)")
-print(scores.round(3).to_string(index=False))
-scores.to_csv(TAB / "regression_ml.csv", index=False)
-print("Best gradient boosting settings on all data:", gbm_grid.fit(X, y).best_params_)
-
-
-imp = []
-for name in ["Ridge", "Gradient boosting (tuned)"]:
-    for train, test in cv.split(X):
-        mdl = models[name].fit(X.iloc[train], y.iloc[train])
-        r = permutation_importance(mdl, X.iloc[test], y.iloc[test], n_repeats=20, random_state=42, scoring="r2")
-        imp.append(pd.DataFrame({"model": name, "feature": REG_FULL, "importance": r.importances_mean}))
-importance = pd.concat(imp).groupby(["model", "feature"])["importance"].mean().unstack(0)
-importance = importance.loc[importance["Ridge"].sort_values().index]
-print("\nPermutation importance on held-out folds (drop in R² when shuffled):")
-print(importance.round(4).to_string())
-importance.to_csv(TAB / "regression_importance.csv")
-lasso = models["Lasso"].fit(X, y)
-print("Lasso coefficients (standardized features; 0 = dropped):")
-print(pd.Series(lasso[-1].coef_, index=REG_FULL).round(3).to_string())
-
-
+# %% Figures
 def effect_chart(ax, table):
     t = table.iloc[::-1].reset_index(drop=True)
     colors = [BLUE if "lacebo" in m else ORANGE for m in t["model"]]
@@ -279,30 +225,5 @@ axes[1, 0].legend(loc="upper left")
 axes[1, 1].hist(resid, bins=50, color=BLUE, edgecolor="white")
 axes[1, 1].set(title="Residual distribution", xlabel="residual", ylabel="occupations")
 show(fig, "diagnostics", "Regression diagnostics: uneven spread and heavy tails, so robust errors and checks are needed")
-
-fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
-s = scores.set_index("model")
-axes[0].barh(s.index, s["r2"], xerr=s["r2_sd"], color=[INK2 if "Baseline" in i else BLUE for i in s.index], height=0.6)
-axes[0].axvline(0, color=INK, lw=1)
-axes[0].set(title="R² on held-out folds (higher is better)", xlabel="R² (± sd across folds)")
-axes[1].barh(s.index, s["mae"], color=[INK2 if "Baseline" in i else BLUE for i in s.index], height=0.6)
-for i, v in enumerate(s["mae"]):
-    axes[1].text(v + 0.1, i, f"{v:.2f}", va="center", fontsize=8.5, color=INK2)
-axes[1].set(title="Mean absolute error (lower is better)", xlabel="MAE, log points ×100")
-axes[1].set_yticks([])
-for ax in axes:
-    ax.grid(axis="y", visible=False)
-show(fig, "model_comparison", "All models beat the baseline only slightly: employment change is hard to predict")
-
-fig, ax = plt.subplots(figsize=(9, 4.5))
-yy = np.arange(len(importance))
-ax.barh(yy + 0.2, importance["Ridge"], 0.38, color=BLUE, label="Ridge")
-ax.barh(yy - 0.2, importance["Gradient boosting (tuned)"], 0.38, color=ORANGE, label="Gradient boosting (tuned)")
-ax.set_yticks(yy, importance.index)
-ax.axvline(0, color=INK, lw=1)
-ax.set_xlabel("drop in R² on held-out data when the feature is shuffled (below 0 = no real help)")
-ax.legend(loc="lower right", bbox_to_anchor=(1, 1.0), ncol=2)
-ax.grid(axis="y", visible=False)
-show(fig, "feature_importance", "Even the most useful features improve prediction only slightly")
 
 print("\nSaved tables to", TAB, "and figures to", FIG)
